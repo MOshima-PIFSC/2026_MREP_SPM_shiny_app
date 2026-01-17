@@ -1,7 +1,30 @@
 library(shiny)
 library(DT)
+library(dplyr)
+library(magrittr)
 #library(shinyjs)
 # https://excalidraw.com/
+
+hist_catch <- read.csv("./historical_data.csv") %>%
+  select(Year, Species, Catch, Effort) %>%
+  # Convert species code names to display names
+  mutate(
+    Species = case_when(
+      Species == "yellowfin_tuna" ~ "Yellowfin Tuna",
+      Species == "mahi_mahi" ~ "Mahi Mahi",
+      Species == "deepwater_snapper" ~ "Opakapaka",
+      Species == "peacock_grouper" ~ "Peacock Grouper",
+      Species == "yellowfin_goatfish" ~ "Yellowfin Goatfish",
+      TRUE ~ Species
+    ),
+    # Rename columns to match your table format
+    Date = as.character(Year),
+    Count = round(Catch),  # Assuming Catch represents count
+    Effort = round(Effort, 1)
+  ) %>%
+  select(Species, Date, Count, Effort) %>%
+  rename(`Effort (sec)` = Effort)
+
 
 ui <- fluidPage(
   tags$style(HTML("
@@ -42,13 +65,7 @@ server <- function(input, output, session) {
   
   current_page <- reactiveVal("welcome")
   
-  penguin_data <- reactiveVal(data.frame(
-    Species = c("Yellowfin Tuna", "Skipjack Tuna", "Bigeye Tuna", "Mahi Mahi", "Wahoo", "Marlin", "Swordfish", "Ono", "Ahi", "Striped Marlin"),
-    Date = c("2024", "2024", "2024", "2024", "2024", "2024", "2024", "2024", "2024", "2024"),
-    Count = c(5, 8, 3, 12, 4, 2, 6, 7, 9, 3),
-    Effort = c(6.5, 7.0, 5.5, 8.0, 6.0, 5.0, 7.5, 6.5, 8.5, 5.5),
-    Total_Landings = c(125, 160, 75, 240, 80, 50, 150, 140, 180, 60)
-  ))
+  fish_data <- reactiveVal(hist_catch)
   
   output$nav_menu <- renderUI({
     page <- current_page()
@@ -129,11 +146,11 @@ server <- function(input, output, session) {
   })
   
   output$data_table <- renderDT({
-    datatable(penguin_data(), options = list(pageLength = as.numeric(input$show_entries), searching = TRUE, ordering = TRUE, lengthChange = FALSE, info = FALSE, paging = TRUE), rownames = TRUE, selection = "single")
+    datatable(fish_data(), options = list(pageLength = as.numeric(input$show_entries), searching = TRUE, ordering = TRUE, lengthChange = FALSE, info = FALSE, paging = TRUE), rownames = TRUE, selection = "single")
   }, server = FALSE)
   
   output$table_info <- renderText({
-    total_entries <- nrow(penguin_data())
+    total_entries <- nrow(fish_data())
     paste("Showing 1 to", min(as.numeric(input$show_entries), total_entries), "of", total_entries, "entries")
   })
   
@@ -142,7 +159,7 @@ server <- function(input, output, session) {
       title = "Add data",
       div(class = "modal-section",
         h4("Species"),
-        selectInput("add_species", NULL, choices = c("Yellowfin Tuna", "Skipjack Tuna", "Bigeye Tuna", "Mahi Mahi", "Wahoo", "Marlin", "Swordfish", "Ono", "Ahi", "Striped Marlin"), selected = "Yellowfin Tuna", width = "100%")
+        selectInput("add_species", NULL, choices = c("Yellowfin Tuna", "Mahi Mahi", "Opakapaka", "Peacock Grouper", "Yellowfin Goatfish"), selected = "Yellowfin Tuna", width = "100%")
       ),
       div(class = "modal-section",
         h4("Date"),
@@ -167,7 +184,7 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$submit_data, {
-    current_data <- penguin_data()
+    current_data <- fish_data()
     
     new_row <- data.frame(
       Species = input$add_species,
@@ -178,7 +195,7 @@ server <- function(input, output, session) {
     )
     
     updated_data <- rbind(current_data, new_row)
-    penguin_data(updated_data)
+    fish_data(updated_data)
     
     showNotification("Data added successfully!", type = "message")
     removeModal()
@@ -192,7 +209,7 @@ server <- function(input, output, session) {
       return()
     }
     
-    current_data <- penguin_data()
+    current_data <- fish_data()
     row_data <- current_data[selected, ]
     
     showModal(modalDialog(
@@ -228,7 +245,7 @@ server <- function(input, output, session) {
   
   observeEvent(input$save_edit, {
     selected <- input$data_table_rows_selected
-    current_data <- penguin_data()
+    current_data <- fish_data()
     
     current_data[selected, "Species"] <- input$edit_species
     current_data[selected, "Date"] <- input$edit_date
@@ -236,7 +253,7 @@ server <- function(input, output, session) {
     current_data[selected, "Effort"] <- input$edit_effort
     current_data[selected, "Total_Landings"] <- input$edit_landings
     
-    penguin_data(current_data)
+    fish_data(current_data)
     
     showNotification("Row updated successfully!", type = "message")
     removeModal()
@@ -264,10 +281,10 @@ server <- function(input, output, session) {
   
   observeEvent(input$confirm_delete, {
     selected <- input$data_table_rows_selected
-    current_data <- penguin_data()
+    current_data <- fish_data()
     
     current_data <- current_data[-selected, ]
-    penguin_data(current_data)
+    fish_data(current_data)
     
     showNotification("Row deleted successfully!", type = "message")
     removeModal()
