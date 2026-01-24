@@ -26,38 +26,60 @@ hist_catch <- read.csv("./historical_data.csv") %>%
   rename(`Effort (sec)` = Effort)
 
 
-ui <- fluidPage(
-  tags$style(HTML("
-    body { font-family: Arial, sans-serif; background-color: #f5f5f5; }
-    .main-container { background-color: white; border-radius: 10px; padding: 20px; margin: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .dashboard-title { font-size: 24px; font-weight: 600; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #e0e0e0; }
-    .controls-panel { background-color: #fafafa; border-radius: 8px; padding: 15px; border: 1px solid #e0e0e0; }
-    .controls-title { font-size: 18px; font-weight: 600; margin-bottom: 15px; }
-    .nav-item { padding: 10px 15px; margin: 5px 0; border-radius: 5px; cursor: pointer; transition: background-color 0.3s; }
-    .nav-item:hover { background-color: #e8e8e8; }
-    .nav-item.active { background-color: #007bff; color: white; }
-    .table-section { background-color: white; border-radius: 8px; padding: 20px; border: 1px solid #e0e0e0; }
-    .section-title { font-size: 16px; font-weight: 600; padding: 10px; background-color: white; border: 1px solid #d0d0d0; border-radius: 5px; margin-bottom: 15px; }
-    .modal-section { margin-bottom: 20px; }
-    .modal-section h4 { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
-    .page-content { min-height: 400px; }
-  ")),
+ui <- navbarPage(
+  title = "MREP Shiny App",
   
-  div(class = "main-container",
-    div(class = "dashboard-title", "MREP Shiny App"),
+  tabPanel("Welcome",
+    h2("Welcome to MREP Shiny App"),
+    p("This application allows you to manage catch and effort data for marine species."),
+    hr(),
+    h4("Features:"),
+    tags$ul(
+      tags$li("Data Entry: Add, edit, and delete catch records"),
+      tags$li("Model Results: View analysis results"),
+      tags$li("Summary: Review summary statistics and reports")
+    ),
+    p("Use the tabs above to navigate.")
+  ),
+  
+  tabPanel("Data Entry",
+    h3("Catch and Effort Data"),
+    fluidRow(
+      column(12,
+        actionButton("add_data", "Add data", class = "btn-primary"),
+        actionButton("edit_row", "Edit row"),
+        actionButton("delete_row", "Delete row")
+      )
+    ),
+    br(),
     fluidRow(
       column(3,
-        div(class = "controls-panel",
-          div(class = "controls-title", "Navigation"),
-          uiOutput("nav_menu")
-        )
+        selectInput("show_entries", "Show entries:", 
+                    choices = c(10, 25, 50, 100), selected = 10)
       ),
       column(9,
-        div(class = "page-content",
-          uiOutput("page_content")
-        )
+        textInput("search", "Search:", width = "300px")
       )
-    )
+    ),
+    div(style = "min-height: 600px;",
+    DTOutput("data_table")
+    ),
+    br(),
+    textOutput("table_info")
+  ),
+  
+  tabPanel("Model Results",
+    h2("Model Results"),
+    p("Model results will be displayed here."),
+    hr(),
+    p("This section will show statistical analysis and modeling outputs based on your catch and effort data.")
+  ),
+  
+  tabPanel("Summary",
+    h2("Summary"),
+    p("Summary statistics and reports will be displayed here."),
+    hr(),
+    p("This section will provide an overview of your data and key metrics.")
   )
 )
 
@@ -146,7 +168,16 @@ server <- function(input, output, session) {
   })
   
   output$data_table <- renderDT({
-    datatable(fish_data(), options = list(pageLength = as.numeric(input$show_entries), searching = TRUE, ordering = TRUE, lengthChange = FALSE, info = FALSE, paging = TRUE), rownames = TRUE, selection = "single")
+    datatable(fish_data(), 
+    options = list(
+      pageLength = as.numeric(input$show_entries), 
+      searching = TRUE, 
+      ordering = TRUE, 
+      lengthChange = FALSE, 
+      info = FALSE, 
+      paging = TRUE, 
+      scrollY = FALSE,
+      scrollCollapse = FALSE), rownames = TRUE, selection = "single")
   }, server = FALSE)
   
   output$table_info <- renderText({
