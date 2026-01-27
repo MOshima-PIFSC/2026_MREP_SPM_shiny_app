@@ -6,7 +6,6 @@
 # Terminal stock status is evaluated and the particpants can discuss how fishing activities affected the population.  
 
 ## TODO: 
-## * get guidance for setup for each sceanario to discuss with Marlowe
 ## * incorporate the new historical df into shiny app 
 ## * incorporate the fit_spm function into the shiny app
 ## * add plotting functions into shiny app
@@ -64,7 +63,8 @@ write.csv(final_flat_data, "./R/historical_data.csv")
 final_flat_data %>%
 ggplot(aes(x = Year, y = Biomass)) +
 geom_line(aes(group = scenario, color = scenario)) +
-facet_wrap(~SPECIES, scales = "free_y")
+facet_wrap(~SPECIES, scales = "free_y") + 
+theme_bw()
 
 ##-------------------- Get suggested workshop setup ---------------------#
 # calculate realistic catch numbers for the workshop participants based on 
@@ -72,6 +72,55 @@ facet_wrap(~SPECIES, scales = "free_y")
 guidance <- calculate_realistic_catch_range(historical)
 # see "MARBLE POOL SETUP" section for advice for setting up the fishing scenarios
 print(guidance)
+
+# Create guidance with all necessary info preserved
+guidance_all <- final_flat_data %>%
+  group_by(SPECIES, scenario, K, r, q) %>%
+  nest() %>%
+  mutate(
+    # Add attributes that the function expects
+    guidance = pmap(list(data, scenario, K, r, q), function(df, scen, K_val, r_val, q_val) {
+      
+      Bmsy <- K_val / 2
+      MSY <- r_val * K_val / 4
+      
+      # Add attributes
+      attr(df, "K") <- K_val
+      attr(df, "r") <- r_val
+      attr(df, "q") <- q_val
+      attr(df, "Bmsy") <- Bmsy
+      attr(df, "MSY") <- MSY
+      attr(df, "scenario") <- scen
+      attr(df, "final_B_Bmsy") <- tail(df$Biomass, 1) / Bmsy
+      
+      # Calculate guidance
+      calculate_realistic_catch_range(df, n_recent_years = 3)
+    })
+  )
+
+# View guidance for a specific case
+guidance_all %>%
+  filter(SPECIES == "Yellowfin_tuna", scenario == "healthy") %>%
+  pull(guidance) %>%
+  .[[1]] %>%
+  print()
+
+# Create summary table
+guidance_summary <- guidance_all %>%
+  mutate(
+    stock_status = map_chr(guidance, ~ .x$stock_status),
+    final_B_Bmsy = map_dbl(guidance, ~ .x$final_B_Bmsy),
+    sustainable_catch = map_dbl(guidance, ~ .x$sustainable_catch),
+    marble_range_min = map_dbl(guidance, ~ .x$marble_range[1]),
+    marble_range_max = map_dbl(guidance, ~ .x$marble_range[2]),
+    recommended_marbles = map_dbl(guidance, ~ .x$recommended_marbles_mean)
+  ) %>%
+  select(SPECIES, scenario, stock_status, final_B_Bmsy, 
+         sustainable_catch, marble_range_min, marble_range_max, 
+         recommended_marbles)
+
+print(guidance_summary, n = 25)
+write.csv(guidance_summary, file = "./setup_guidance.csv")
 
 ##-------------------- Combine historical and workshop data ---------------------#
 # Add 3 additional workshop years
@@ -87,6 +136,19 @@ combined_data <- rbind(
   historical %>% select(Year, Catch, Effort),
   workshop_scaled %>% select(Year, Catch, Effort)
 )
+
+##-------------------- Reverse scale historical to workshop data for shiny app ----------------------#
+
+# 1. Create the bidirectional scaling object
+scaling <- create_bidirectional_scaling(
+  historical_data = hist_catch_shiny_yt,
+  reference_marbles = 20,    # 20 marbles = mean historical catch
+  reference_time_sec = 30     # 30 seconds = mean historical effort
+)
+workshop_display <- display_for_workshop(hist_catch_shiny_yt, scaling)
+print(workshop_display)
+
+combined_data <- workshop_display %>% select(-CPUE_marbles) %>% rename("Year" = Date, "Catch" = Marbles, "Effort" = Seconds)
 
 ##-------------------- Fit model ---------------------#
 model_fit <- fit_schaefer_model(

@@ -1,7 +1,6 @@
 # Surplus Production Stock Assessment Model
 # Fits Schaefer model to catch and effort data from workshop
 
-
 #' Fit Schaefer Surplus Production Model
 #'
 #' Estimates stock parameters (r, K, q) from catch and effort time series
@@ -42,7 +41,16 @@ fit_schaefer_model <- function(data,
     max_catch <- max(catch, na.rm = TRUE)
     mean_catch <- mean(catch, na.rm = TRUE)
     mean_cpue <- mean(cpue_obs, na.rm = TRUE)
-    cpue_trend <- lm(cpue_obs ~ years)$coefficients[2]
+    
+    # Safely estimate CPUE trend
+    cpue_trend <- tryCatch({
+      lm(cpue_obs ~ years)$coefficients[2]
+    }, error = function(e) {
+      0  # Default to no trend if calculation fails
+    })
+    
+    # Handle NA or invalid trend
+    if (is.na(cpue_trend)) cpue_trend <- 0
     
     # Estimate K from catch data
     # Rough rule: MSY ≈ 0.4 * mean catch for developing fishery
@@ -235,10 +243,10 @@ fit_schaefer_model <- function(data,
   
   # Report convergence status
   if (fit$convergence == 0) {
-    cat("\n", clisymbols::symbol$tick, "Model converged successfully!\n")
+    cat("\n", clisymbols::symbol$tick, " Model converged successfully!\n")
     cat("  Final objective value:", fit$value, "\n\n")
   } else {
-    cat("\n", clisymbols::symbol$warning, "Model convergence uncertain (code:", fit$convergence, ")\n")
+    cat("\n", clisymbols::symbol$warning, " Model convergence uncertain (code:", fit$convergence, ")\n")
     cat("  Final objective value:", fit$value, "\n")
     cat("  Parameter estimates may be approximate\n\n")
   }
@@ -251,9 +259,9 @@ fit_schaefer_model <- function(data,
     q_est <- fit$par[3]
     
     # Calculate reference points
-    Bmsy <- K_est / 2
-    MSY <- r_est * K_est / 4
-    Fmsy <- r_est / 2
+    Bmsy <- unname(K_est / 2)
+    MSY <- unname(r_est * K_est / 4)
+    Fmsy <- unname(r_est / 2)
     
     # Run forward simulation with estimated parameters to get biomass trajectory
     B_est <- numeric(n_years)
@@ -328,7 +336,7 @@ fit_schaefer_model <- function(data,
       
       # Time series
       time_series = data.frame(
-        Year = years,
+        Year = as.numeric(years),
         Catch_obs = catch,
         Catch_pred = catch_pred,
         Effort = effort,

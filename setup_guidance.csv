@@ -1,0 +1,21 @@
+"","K","r","q","SPECIES","scenario","stock_status","final_B_Bmsy","sustainable_catch","marble_range_min","marble_range_max","recommended_marbles"
+"1",2000000,0.35,8e-06,"Yellowfin_tuna","healthy","Healthy",1.11,175000,14,22,18
+"2",2000000,0.35,8e-06,"Yellowfin_tuna","overfished","Critically Overfished",0.37,70000,4,9,6
+"3",2000000,0.35,8e-06,"Yellowfin_tuna","recovering","Overfished",0.93,122500,17,28,23
+"4",2000000,0.35,8e-06,"Yellowfin_tuna","declining","Overfished",0.62,122500,8,13,10
+"5",800000,1.2,1.5e-05,"Mahi_Mahi","healthy","Healthy",1.1,240000,14,23,19
+"6",800000,1.2,1.5e-05,"Mahi_Mahi","overfished","Critically Overfished",0.35,96000,4,7,6
+"7",800000,1.2,1.5e-05,"Mahi_Mahi","recovering","Overfished",0.95,168000,15,24,19
+"8",800000,1.2,1.5e-05,"Mahi_Mahi","declining","Overfished",0.6,168000,8,12,10
+"9",300000,0.18,2.5e-05,"Opakapaka","healthy","Healthy",1.12,13500,14,21,18
+"10",300000,0.18,2.5e-05,"Opakapaka","overfished","Critically Overfished",0.39,5400,4,9,7
+"11",300000,0.18,2.5e-05,"Opakapaka","recovering","Overfished",0.89,9450,22,35,28
+"12",300000,0.18,2.5e-05,"Opakapaka","declining","Overfished",0.67,9450,8,12,10
+"13",250000,0.25,3e-05,"Peacock_grouper","healthy","Healthy",1.11,15625,14,22,18
+"14",250000,0.25,3e-05,"Peacock_grouper","overfished","Critically Overfished",0.38,6250,4,9,7
+"15",250000,0.25,3e-05,"Peacock_grouper","recovering","Overfished",0.91,10938,19,30,25
+"16",250000,0.25,3e-05,"Peacock_grouper","declining","Overfished",0.65,10938,8,13,10
+"17",400000,0.65,2e-05,"Yellowfin_goatfish","healthy","Healthy",1.1,65000,14,23,18
+"18",400000,0.65,2e-05,"Yellowfin_goatfish","overfished","Critically Overfished",0.35,26000,4,8,6
+"19",400000,0.65,2e-05,"Yellowfin_goatfish","recovering","Overfished",0.95,45500,16,25,21
+"20",400000,0.65,2e-05,"Yellowfin_goatfish","declining","Overfished",0.6,45500,8,13,11

@@ -137,12 +137,13 @@ generate_historical_data <- function(n_years = 12,
 #' Generate Biomass Trajectory
 #'
 #' Creates a biomass time series from initial to final state
+#' Trajectory shape depends on r (species with higher r change faster)
 #'
 #' @param n_years Number of years
 #' @param B_initial Starting biomass
 #' @param B_final Ending biomass
 #' @param K Carrying capacity
-#' @param r Growth rate
+#' @param r Growth rate (affects trajectory curvature)
 #' @param trajectory_type Type of trajectory: "linear", "smooth", "fluctuating"
 #'
 #' @return Vector of biomass values
@@ -156,16 +157,41 @@ generate_biomass_trajectory <- function(n_years, B_initial, B_final, K, r,
     B <- seq(B_initial, B_final, length.out = n_years)
     
   } else if (trajectory_type == "smooth") {
-    # Smooth sigmoid-like trajectory
-    # Uses logistic curve shifted to go from B_initial to B_final
-    x <- seq(-3, 3, length.out = n_years)
+    # Trajectory shape depends on r
+    # High r species (like Mahi) change faster (steeper curve)
+    # Low r species (like Opakapaka) change slower (gentler curve)
+    
+    # Scale curve steepness by r
+    # r = 0.18 (Opaka): gentle curve (steepness ~ 2)
+    # r = 0.35 (Tuna): moderate curve (steepness ~ 3)
+    # r = 1.20 (Mahi): steep curve (steepness ~ 5)
+    steepness <- 1 + (r / 0.3) * 2
+    steepness <- max(1.5, min(steepness, 6))  # Bound between 1.5 and 6
+    
+    # Create sigmoid from 0 to 1
+    x <- seq(-steepness, steepness, length.out = n_years)
     sigmoid <- 1 / (1 + exp(-x))
+    
+    # Scale sigmoid to go from B_initial to B_final
+    # This works for both recovery (B_final > B_initial) and decline (B_final < B_initial)
     B <- B_initial + (B_final - B_initial) * sigmoid
     
   } else if (trajectory_type == "fluctuating") {
     # Add some realistic fluctuation around trend
+    # Fluctuation magnitude also depends on r (higher r = more variable)
     base_trend <- seq(B_initial, B_final, length.out = n_years)
-    fluctuation <- sin(2 * pi * t / 4) * (B_initial - B_final) * 0.1
+    
+    # Fluctuation amplitude scales with r
+    fluctuation_amplitude <- (B_initial - B_final) * (r / 0.5) * 0.15
+    fluctuation_amplitude <- min(abs(fluctuation_amplitude), abs(B_initial - B_final) * 0.3)
+    
+    # Multiple frequency components for realistic pattern
+    fluctuation <- fluctuation_amplitude * (
+      0.6 * sin(2 * pi * t / 4) +           # 4-year cycle
+      0.3 * sin(2 * pi * t / 2.5) +         # 2.5-year cycle
+      0.1 * sin(2 * pi * t / 7)             # 7-year cycle
+    )
+    
     B <- base_trend + fluctuation
     
   } else {
@@ -182,6 +208,7 @@ generate_biomass_trajectory <- function(n_years, B_initial, B_final, K, r,
   return(B)
 }
 
+
 #' Get Scenario-Specific Parameters
 #'
 #' @param scenario Stock status scenario
@@ -193,11 +220,11 @@ get_scenario_params <- function(scenario, K, Bmsy) {
   
   params <- switch(scenario,
     "healthy" = list(
-      B_initial = Bmsy * 0.8,      # Start slightly below Bmsy
-      B_final = Bmsy * 1.2,        # End above Bmsy (healthy!)
+      B_initial = Bmsy * 1.3,      # Start above Bmsy (healthy)
+      B_final = Bmsy * 1.1,        # End slightly above Bmsy (slight decline from fishing)
       trajectory_type = "smooth",
       base_effort = 3000,
-      description = "Stock recovering to healthy levels above Bmsy"
+      description = "Stock declining slightly from fishing but remaining healthy"
     ),
     "overfished" = list(
       B_initial = Bmsy * 0.8,      # Start below Bmsy
@@ -421,9 +448,21 @@ check_data_quality <- function(data) {
   
   # Check CPUE trend
   cpue <- data$Catch / data$Effort
-  cpue_trend <- lm(cpue ~ data$Year)
-  if (summary(cpue_trend)$coefficients[2, 4] < 0.05) {
-    trend_dir <- ifelse(coef(cpue_trend)[2] > 0, "increasing", "decreasing")
+  
+  # Safely check for trend
+  cpue_trend_result <- tryCatch({
+    cpue_lm <- lm(cpue ~ data$Year)
+    cpue_summary <- summary(cpue_lm)
+    list(
+      coefficient = coef(cpue_lm)[2],
+      p_value = cpue_summary$coefficients[2, 4]
+    )
+  }, error = function(e) {
+    list(coefficient = NA, p_value = NA)
+  })
+  
+  if (!is.na(cpue_trend_result$p_value) && cpue_trend_result$p_value < 0.05) {
+    trend_dir <- ifelse(cpue_trend_result$coefficient > 0, "increasing", "decreasing")
     warnings <- c(warnings, sprintf("Significant CPUE trend detected (%s)", trend_dir))
   }
   
@@ -450,16 +489,16 @@ check_data_quality <- function(data) {
   
   if (length(warnings) > 0) {
     cat("\nWARNINGS:\n")
-    for (w in warnings) cat(clisymbols::symbol$warning, w, "\n")
+    for (w in warnings) cat("  ", clisymbols::symbol$warning, w, "\n")
   }
   
   if (length(issues) > 0) {
     cat("\nISSUES (may prevent fitting):\n")
-    for (i in issues) cat(clisymbols::symbol$cross, i, "\n")
+    for (i in issues) cat("  ", clisymbols::symbol$cross, i, "\n")
   }
   
   if (length(issues) == 0 && length(warnings) == 0) {
-    cat("\n", clisymbols::symbol$tick, "Data quality looks good!\n")
+    cat("\n", clisymbols::symbol$tick, " Data quality looks good!\n")
   }
   
   cat("\n")
@@ -900,6 +939,202 @@ print.workshop_scaling <- function(scaling) {
   cat(sprintf("  Mean Catch: %.1f\n", scaling$historical_catch_mean))
   cat(sprintf("  Mean Effort: %.1f\n", scaling$historical_effort_mean))
   cat("\n")
+}
+
+#' Reverse Scale Historical Data to Marble Units
+#'
+#' Converts historical catch/effort data to the marble/seconds scale
+#' that participants will experience in the workshop
+#'
+#' @param historical_data Data frame with Catch and Effort columns
+#' @param reference_marbles What marble count represents mean historical catch (default: 20)
+#' @param reference_time_sec What time represents typical effort (default: 30)
+#'
+#' @return Data frame with additional columns: Marbles, Seconds
+reverse_scale_to_marbles <- function(historical_data,
+                                     reference_marbles = 20,
+                                     reference_time_sec = 30) {
+  
+  # Calculate scaling factors (inverse of forward scaling)
+  hist_catch_mean <- mean(historical_data$Catch)
+  hist_effort_mean <- mean(historical_data$Effort)
+  
+  # Catch scale: historical catch -> marbles
+  # If reference_marbles (20) = hist_catch_mean, then
+  # marbles = catch * (reference_marbles / hist_catch_mean)
+  marble_scale <- reference_marbles / hist_catch_mean
+  
+  # Effort scale: historical effort -> seconds
+  # Scale so that hist_effort_mean = reference_time_sec
+  time_scale <- reference_time_sec / hist_effort_mean
+  
+  # Apply reverse scaling
+  historical_data$Marbles <- round(historical_data$Catch * marble_scale, 1)
+  historical_data$Seconds <- round(historical_data$Effort * time_scale, 1)
+  
+  # Calculate CPUE in marble units (marbles per second)
+  historical_data$CPUE_marbles <- round(historical_data$Marbles / historical_data$Seconds, 3)
+  
+  return(historical_data)
+}
+
+#' Create Bidirectional Scaling Object
+#'
+#' Creates a scaling object that can convert both directions:
+#' - Workshop marbles -> Historical catch units (forward)
+#' - Historical catch -> Workshop marbles (reverse)
+#'
+#' @param historical_data Historical data frame
+#' @param reference_marbles Marble count that equals mean historical catch (default: 20)
+#' @param reference_time_sec Time that equals mean historical effort (default: 30)
+#'
+#' @return Scaling object with both forward and reverse functions
+create_bidirectional_scaling <- function(historical_data,
+                                        reference_marbles = 20,
+                                        reference_time_sec = 30) {
+  
+  # Calculate historical statistics
+  hist_catch_mean <- mean(historical_data$Count)
+  hist_effort_mean <- mean(historical_data$Effort)
+  hist_cpue <- historical_data$Count / historical_data$Effort
+  hist_cpue_median <- median(hist_cpue)
+  
+  # Calculate scaling factors
+  # Forward: marbles -> catch units
+  catch_to_marble_scale <- reference_marbles / hist_catch_mean
+  marble_to_catch_scale <- hist_catch_mean / reference_marbles
+  
+  # Forward: time -> effort units
+  time_to_effort_scale <- hist_effort_mean / reference_time_sec
+  effort_to_time_scale <- reference_time_sec / hist_effort_mean
+  
+  scaling <- list(
+    # Forward scaling (workshop -> historical)
+    marble_to_catch = marble_to_catch_scale,
+    time_to_effort = time_to_effort_scale,
+    
+    # Reverse scaling (historical -> workshop)
+    catch_to_marble = catch_to_marble_scale,
+    effort_to_time = effort_to_time_scale,
+    
+    # Reference values
+    reference_marbles = reference_marbles,
+    reference_time_sec = reference_time_sec,
+    hist_catch_mean = hist_catch_mean,
+    hist_effort_mean = hist_effort_mean,
+    hist_cpue_median = hist_cpue_median,
+    
+    # Functions for easy use
+    to_marbles = function(catch_value) {
+      round(catch_value * catch_to_marble_scale, 1)
+    },
+    
+    to_catch = function(marble_count) {
+      round(marble_count * marble_to_catch_scale, 1)
+    },
+    
+    to_seconds = function(effort_value) {
+      round(effort_value * effort_to_time_scale, 1)
+    },
+    
+    to_effort = function(time_seconds) {
+      round(time_seconds * time_to_effort_scale, 1)
+    }
+  )
+  
+  class(scaling) <- c("bidirectional_scaling", "list")
+  
+  return(scaling)
+}
+
+#' Print Bidirectional Scaling
+#'
+#' @param scaling Bidirectional scaling object
+print.bidirectional_scaling <- function(scaling) {
+  cat("=== Bidirectional Scaling Parameters ===\n\n")
+  
+  cat("Reference Values:\n")
+  cat(sprintf("  %d marbles = %.0f catch units (historical mean)\n", 
+              scaling$reference_marbles, scaling$hist_catch_mean))
+  cat(sprintf("  %d seconds = %.0f effort units (historical mean)\n",
+              scaling$reference_time_sec, scaling$hist_effort_mean))
+  
+  cat("\nScaling Factors:\n")
+  cat(sprintf("  1 marble = %.2f catch units\n", scaling$marble_to_catch))
+  cat(sprintf("  1 catch unit = %.3f marbles\n", scaling$catch_to_marble))
+  cat(sprintf("  1 second = %.2f effort units\n", scaling$time_to_effort))
+  cat(sprintf("  1 effort unit = %.3f seconds\n", scaling$effort_to_time))
+  
+  cat("\nExample Conversions:\n")
+  cat(sprintf("  15 marbles -> %.0f catch units\n", scaling$to_catch(15)))
+  cat(sprintf("  %.0f catch -> %.1f marbles\n", 
+              scaling$hist_catch_mean, scaling$to_marbles(scaling$hist_catch_mean)))
+  cat(sprintf("  30 seconds -> %.0f effort units\n", scaling$to_effort(30)))
+  cat(sprintf("  %.0f effort -> %.1f seconds\n",
+              scaling$hist_effort_mean, scaling$to_seconds(scaling$hist_effort_mean)))
+  
+  cat("\n")
+}
+
+#' Display Historical Data in Workshop Units
+#'
+#' Convenience function to show historical data in marble/second scale
+#' for workshop participants
+#'
+#' @param historical_data Historical data frame
+#' @param scaling Bidirectional scaling object
+#' @param columns_to_show Which columns to display (default: Year, Marbles, Seconds)
+#'
+#' @return Data frame with workshop-scale values
+display_for_workshop <- function(historical_data, 
+                                 scaling,
+                                 columns_to_show = c("Date", "Marbles", "Seconds", "CPUE_marbles")) {
+  
+  # Convert to marble units
+  workshop_view <- historical_data
+  workshop_view$Marbles <- scaling$to_marbles(historical_data$Count)
+  workshop_view$Seconds <- scaling$to_seconds(historical_data$Effort)
+  workshop_view$CPUE_marbles <- round(workshop_view$Marbles / workshop_view$Seconds, 3)
+  
+  # Select columns
+  result <- workshop_view[, columns_to_show, drop = FALSE]
+  
+  return(result)
+}
+
+#' Convert Workshop Input to Historical Scale
+#'
+#' Takes participant marble counts and converts to historical scale
+#' for model fitting
+#'
+#' @param workshop_data Data frame with Marbles and Seconds (or just Marbles)
+#' @param scaling Bidirectional scaling object
+#' @param standard_time If Seconds column missing, use this (default: 30)
+#'
+#' @return Data frame with Catch and Effort in historical scale
+convert_workshop_to_historical <- function(workshop_data,
+                                          scaling,
+                                          standard_time = 30) {
+  
+  result <- workshop_data
+  
+  # Convert marbles to catch
+  if ("Marbles" %in% names(workshop_data)) {
+    result$Catch <- scaling$to_catch(workshop_data$Marbles)
+  }
+  
+  # Convert seconds to effort
+  if ("Seconds" %in% names(workshop_data)) {
+    result$Effort <- scaling$to_effort(workshop_data$Seconds)
+  } else {
+    # Use standard time if not provided
+    result$Effort <- scaling$to_effort(standard_time)
+  }
+  
+  # Calculate CPUE
+  result$CPUE <- round(result$Catch / result$Effort, 4)
+  
+  return(result)
 }
 
 #' Calculate Realistic Catch Range for Workshop
