@@ -2,92 +2,80 @@ library(shiny)
 library(DT)
 library(dplyr)
 library(magrittr)
+library(bslib)
+library(bsicons)
 #library(shinyjs)
 # https://excalidraw.com/
 
 hist_catch <- read.csv("./historical_data.csv") %>%
-  select(Year, Species, Catch, Effort) %>%
+  select(Year, SPECIES, Catch, scenario, Effort, CPUE) %>%
   # Convert species code names to display names
   mutate(
-    Species = case_when(
-      Species == "yellowfin_tuna" ~ "Yellowfin Tuna",
-      Species == "mahi_mahi" ~ "Mahi Mahi",
-      Species == "deepwater_snapper" ~ "Opakapaka",
-      Species == "peacock_grouper" ~ "Peacock Grouper",
-      Species == "yellowfin_goatfish" ~ "Yellowfin Goatfish",
-      TRUE ~ Species
+    SPECIES = case_when(
+      SPECIES == "yellowfin_tuna" ~ "Yellowfin Tuna",
+      SPECIES == "mahi_mahi" ~ "Mahi Mahi",
+      SPECIES == "Opakapaka" ~ "Opakapaka",
+      SPECIES == "Peacock_grouper" ~ "Peacock Grouper",
+      SPECIES == "Yellowfin_goatfish" ~ "Yellowfin Goatfish",
+      TRUE ~ SPECIES
     ),
     # Rename columns to match your table format
     Date = as.character(Year),
     Count = round(Catch),  # Assuming Catch represents count
     Effort = round(Effort, 1)
-  ) %>%
-  select(Species, Date, Count, Effort) %>%
-  rename(`Effort (sec)` = Effort)
+  ) %>% 
+  mutate(Sps_scenario = paste(SPECIES, scenario, sep = "_"))
+  
+hist_catch_shiny <- hist_catch %>%
+  filter(scenario == "healthy") %>% # adjust based on what scenario you want to use per species
+  select(SPECIES, Date, Count, Effort) 
+  #rename(`Effort (sec)` = Effort)
 
 
-ui <- navbarPage(
+ui <- page_sidebar(
   title = "MREP Shiny App",
+  theme = bs_theme(bootswatch = "lumen"),  # Modern theme
   
-  tabPanel("Welcome",
-    h2("Welcome to MREP Shiny App"),
-    p("This application allows you to manage catch and effort data for marine species."),
-    hr(),
-    h4("Features:"),
-    tags$ul(
-      tags$li("Data Entry: Add, edit, and delete catch records"),
-      tags$li("Model Results: View analysis results"),
-      tags$li("Summary: Review summary statistics and reports")
-    ),
-    p("Use the tabs above to navigate.")
+  sidebar = sidebar(
+    width = 280,
+    
+    accordion(
+      accordion_panel(
+        "Navigation",
+        icon = bsicons::bs_icon("compass"),
+        radioButtons(
+          "page_select",
+          label = NULL,
+          choiceNames = list(
+            tagList(bsicons::bs_icon("house"), " Welcome"),
+            tagList(bsicons::bs_icon("table"), " Data Entry"),
+            tagList(bsicons::bs_icon("graph-up"), " Model Results"),
+            tagList(bsicons::bs_icon("clipboard-data"), " Summary")
+          ),
+          choiceValues = c("welcome", "data_entry", "model_results", "summary"),
+          selected = "welcome"
+        )
+      )#,
+      
+      # accordion_panel(
+      #   "Settings",
+      #   icon = bsicons::bs_icon("gear"),
+      #   selectInput("species", "Species:", 
+      #               choices = c("Tuna", "Mahi", "Opaka")),
+      #   selectInput("scenario", "Scenario:",
+      #               choices = c("Healthy", "Overfished"))
+      # )
+    )
   ),
   
-  tabPanel("Data Entry",
-    h3("Catch and Effort Data"),
-    fluidRow(
-      column(12,
-        actionButton("add_data", "Add data", class = "btn-primary"),
-        actionButton("edit_row", "Edit row"),
-        actionButton("delete_row", "Delete row")
-      )
-    ),
-    br(),
-    fluidRow(
-      column(3,
-        selectInput("show_entries", "Show entries:", 
-                    choices = c(10, 25, 50, 100), selected = 10)
-      ),
-      column(9,
-        textInput("search", "Search:", width = "300px")
-      )
-    ),
-    div(style = "min-height: 600px;",
-    DTOutput("data_table")
-    ),
-    br(),
-    textOutput("table_info")
-  ),
-  
-  tabPanel("Model Results",
-    h2("Model Results"),
-    p("Model results will be displayed here."),
-    hr(),
-    p("This section will show statistical analysis and modeling outputs based on your catch and effort data.")
-  ),
-  
-  tabPanel("Summary",
-    h2("Summary"),
-    p("Summary statistics and reports will be displayed here."),
-    hr(),
-    p("This section will provide an overview of your data and key metrics.")
-  )
+  uiOutput("page_content")
 )
 
 server <- function(input, output, session) {
   
   current_page <- reactiveVal("welcome")
   
-  fish_data <- reactiveVal(hist_catch)
+  fish_data <- reactiveVal(hist_catch_shiny)
   
   output$nav_menu <- renderUI({
     page <- current_page()
@@ -221,8 +209,8 @@ server <- function(input, output, session) {
       Species = input$add_species,
       Date = input$add_date,
       Count = input$add_count,
-      Effort = input$add_effort,
-      Total_Landings = input$add_landings
+      Effort = input$add_effort
+      #Total_Landings = input$add_landings
     )
     
     updated_data <- rbind(current_data, new_row)
@@ -247,7 +235,7 @@ server <- function(input, output, session) {
       title = "Edit Row",
       div(class = "modal-section",
         h4("Species"),
-        selectInput("edit_species", NULL, choices = c("Yellowfin Tuna", "Skipjack Tuna", "Bigeye Tuna", "Mahi Mahi", "Wahoo", "Marlin", "Swordfish", "Ono", "Ahi", "Striped Marlin"), selected = row_data$Species, width = "100%")
+        selectInput("edit_species", NULL, choices = c("Yellowfin Tuna", "Mahi Mahi", "Opakapaka", "Peacock Grouper", "Yellowfin Goatfish"), selected = row_data$Species, width = "100%")
       ),
       div(class = "modal-section",
         h4("Date"),
@@ -261,10 +249,10 @@ server <- function(input, output, session) {
         h4("Effort (hours)"),
         numericInput("edit_effort", NULL, value = row_data$Effort, min = 0, step = 0.5, width = "100%")
       ),
-      div(class = "modal-section",
-        h4("Total Landings (lbs)"),
-        numericInput("edit_landings", NULL, value = row_data$Total_Landings, min = 0, width = "100%")
-      ),
+      # div(class = "modal-section",
+      #   h4("Total Landings (lbs)"),
+      #   numericInput("edit_landings", NULL, value = row_data$Total_Landings, min = 0, width = "100%")
+      # ),
       footer = tagList(
         modalButton("Cancel"),
         actionButton("save_edit", "Save Changes", class = "btn-primary")
@@ -282,7 +270,7 @@ server <- function(input, output, session) {
     current_data[selected, "Date"] <- input$edit_date
     current_data[selected, "Count"] <- input$edit_count
     current_data[selected, "Effort"] <- input$edit_effort
-    current_data[selected, "Total_Landings"] <- input$edit_landings
+    #current_data[selected, "Total_Landings"] <- input$edit_landings
     
     fish_data(current_data)
     
