@@ -5,11 +5,6 @@
 # Combined data is then fit with a surplus production model and biomass, F, and reference points are estimated. 
 # Terminal stock status is evaluated and the particpants can discuss how fishing activities affected the population.  
 
-## TODO: 
-## * incorporate the new historical df into shiny app 
-## * incorporate the fit_spm function into the shiny app
-## * add plotting functions into shiny app
-
 library(ggplot2)
 library(dplyr)
 library(purrr)
@@ -33,13 +28,13 @@ historical <- generate_historical_data(
 )
 
 scenarios_vec <- c("healthy", "overfished", "recovering", "declining")
-species_vec <- sps_lh$SPECIES
+species_vec <- sps_lh$Species
 
 run_grid <- expand_grid(
-  SPECIES = species_vec, 
+  Species = species_vec, 
   scenario = scenarios_vec
 ) %>%
-  left_join(sps_lh, by = "SPECIES")
+  left_join(sps_lh, by = "Species")
 
 results <- run_grid %>%
   mutate(historical_data = pmap(list(scenario, K, r), function(scen, k_val, r_val) {
@@ -54,7 +49,7 @@ results <- run_grid %>%
   }))
 
 tuna_healthy <- results %>% 
-  filter(SPECIES == "Yellowfin_tuna" & scenario == "healthy") %>%
+  filter(Species == "Yellowfin_tuna" & scenario == "healthy") %>%
   pull(historical_data)
 
 final_flat_data <- results %>% unnest(historical_data)
@@ -63,7 +58,7 @@ write.csv(final_flat_data, "./R/historical_data.csv")
 final_flat_data %>%
 ggplot(aes(x = Year, y = Biomass)) +
 geom_line(aes(group = scenario, color = scenario)) +
-facet_wrap(~SPECIES, scales = "free_y") + 
+facet_wrap(~Species, scales = "free_y") + 
 theme_bw()
 
 ##-------------------- Get suggested workshop setup ---------------------#
@@ -75,7 +70,7 @@ print(guidance)
 
 # Create guidance with all necessary info preserved
 guidance_all <- final_flat_data %>%
-  group_by(SPECIES, scenario, K, r, q) %>%
+  group_by(Species, scenario, K, r, q) %>%
   nest() %>%
   mutate(
     # Add attributes that the function expects
@@ -100,7 +95,7 @@ guidance_all <- final_flat_data %>%
 
 # View guidance for a specific case
 guidance_all %>%
-  filter(SPECIES == "Yellowfin_tuna", scenario == "healthy") %>%
+  filter(Species == "Yellowfin_tuna", scenario == "healthy") %>%
   pull(guidance) %>%
   .[[1]] %>%
   print()
@@ -115,7 +110,7 @@ guidance_summary <- guidance_all %>%
     marble_range_max = map_dbl(guidance, ~ .x$marble_range[2]),
     recommended_marbles = map_dbl(guidance, ~ .x$recommended_marbles_mean)
   ) %>%
-  select(SPECIES, scenario, stock_status, final_B_Bmsy, 
+  select(Species, scenario, stock_status, final_B_Bmsy, 
          sustainable_catch, marble_range_min, marble_range_max, 
          recommended_marbles)
 
@@ -140,19 +135,21 @@ combined_data <- rbind(
 ##-------------------- Reverse scale historical to workshop data for shiny app ----------------------#
 
 # 1. Create the bidirectional scaling object
+hist_catch_shiny_yt <- hist_catch_shiny %>% filter(Species == "Yellowfin_tuna")
+
 scaling <- create_bidirectional_scaling(
   historical_data = hist_catch_shiny_yt,
   reference_marbles = 20,    # 20 marbles = mean historical catch
   reference_time_sec = 30     # 30 seconds = mean historical effort
 )
-workshop_display <- display_for_workshop(hist_catch_shiny_yt, scaling)
+workshop_display <- display_for_workshop(hist_catch_shiny_yt, scaling, columns_to_show = c("Species", "Date", "Count", "Effort"))
 print(workshop_display)
 
 combined_data <- workshop_display %>% select(-CPUE_marbles) %>% rename("Year" = Date, "Catch" = Marbles, "Effort" = Seconds)
-
+scaling_by_species_yt <- scaling_by_species %>% filter(Species == "Yellowfin_tuna" & Scenario == "healthy")
 ##-------------------- Fit model ---------------------#
 model_fit <- fit_schaefer_model(
-  data = combined_data,
+  data = scaling_by_species_yt,
   use_cpue = TRUE
 )
 
@@ -164,5 +161,8 @@ plot_model_fit(model_fit)
 
 plot_biomass_trajectory(model_fit)
 
-plot_kobe(model_fit) #TODO: fix kobe plot code so that healthy and overfishing block colors are switched
+plot_kobe(model_fit) 
 
+plot_catch_data(scaling_by_species_yt)
+
+plot_cpue(scaling_by_species_yt)
