@@ -1,4 +1,4 @@
-"","K","r","q","SPECIES","scenario","stock_status","final_B_Bmsy","sustainable_catch","marble_range_min","marble_range_max","recommended_marbles"
+"","K","r","q","Species","scenario","stock_status","final_B_Bmsy","sustainable_catch","marble_range_min","marble_range_max","recommended_marbles"
 "1",2000000,0.35,8e-06,"Yellowfin_tuna","healthy","Healthy",1.11,175000,14,22,18
 "2",2000000,0.35,8e-06,"Yellowfin_tuna","overfished","Critically Overfished",0.37,70000,4,9,6
 "3",2000000,0.35,8e-06,"Yellowfin_tuna","recovering","Overfished",0.93,122500,17,28,23
