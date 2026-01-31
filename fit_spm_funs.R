@@ -6,7 +6,7 @@
 #' Estimates stock parameters (r, K, q) from catch and effort time series
 #' using non-linear optimization
 #'
-#' @param data Data frame with columns: Year, Catch, Effort (and optionally CPUE)
+#' @param data Data frame with columns: Year, Count, Effort (and optionally CPUE)
 #' @param initial_params Named vector of starting values for optimization
 #' @param method Optimization method (default: "L-BFGS-B")
 #' @param use_cpue If TRUE, fit to CPUE data; if FALSE, fit to catch (default: TRUE)
@@ -24,8 +24,8 @@ fit_schaefer_model <- function(data,
   }
   
   # Extract data vectors
-  years <- data$Year
-  catch <- data$Catch
+  years <- data$Date
+  catch <- data$Count
   effort <- data$Effort
   n_years <- length(years)
   
@@ -378,13 +378,13 @@ fit_schaefer_model <- function(data,
 #' Fixes catchability (q) and estimates only r and K
 #' More stable for short or noisy time series
 #'
-#' @param data Data frame with Year, Catch, Effort
+#' @param data Data frame with Year, Count, Effort
 #'
 #' @return Schaefer fit object
 fit_simple_schaefer <- function(data) {
   
-  years <- data$Year
-  catch <- data$Catch
+  years <- data$Date
+  catch <- data$Count
   effort <- data$Effort
   n_years <- length(years)
   
@@ -639,25 +639,25 @@ plot_biomass_trajectory <- function(fit) {
   K <- fit$parameters$K
   B_Bmsy <- fit$current_status$B_Bmsy
   
-  p <- ggplot(ts_data, aes(x = Year, y = Biomass / Bmsy)) +
-    geom_hline(yintercept = 1.0, linetype = "solid", color = "darkgreen", linewidth = 1) +
-    geom_hline(yintercept = 0.5, linetype = "dashed", color = "orange", linewidth = 0.8) +
-    geom_ribbon(aes(ymin = 0, ymax = pmin(Biomass/Bmsy, 0.5)), fill = "red", alpha = 0.2) +
-    geom_ribbon(aes(ymin = 0.5, ymax = pmin(Biomass/Bmsy, 1.0)), fill = "orange", alpha = 0.2) +
-    geom_ribbon(aes(ymin = 1.0, ymax = Biomass/Bmsy), fill = "green", alpha = 0.2) +
+  p <- ggplot(ts_data, aes(x = Year, y = Biomass)) +
+    geom_hline(yintercept = Bmsy, linetype = "solid", color = "darkgreen", linewidth = 1) +
+    #geom_hline(yintercept = 0.5, linetype = "dashed", color = "orange", linewidth = 0.8) +
+    geom_ribbon(aes(ymin = 0, ymax = Bmsy), fill = "orange", alpha = 0.2) +
+    geom_ribbon(aes(ymin = Bmsy, ymax = Inf), fill = "green", alpha = 0.2) +
+    #geom_ribbon(aes(ymin = 1.0, ymax = Biomass/Bmsy), fill = "green", alpha = 0.2) +
     geom_line(linewidth = 1.5, color = "#1d3557") +
     geom_point(size = 3, color = "#1d3557") +
-    geom_point(data = tail(ts_data, 1), aes(y = Biomass/Bmsy), 
+    geom_point(data = tail(ts_data, 1), aes(y = Biomass), 
                size = 5, color = "red", shape = 18) +
-    annotate("text", x = min(ts_data$Year), y = 1.0, label = "Bmsy (Target)", 
+    annotate("text", x = min(ts_data$Year), y = Bmsy, label = "Bmsy (Target)", 
              vjust = -0.5, hjust = 0, color = "darkgreen", fontface = "bold") +
-    annotate("text", x = min(ts_data$Year), y = 0.5, label = "Critical Level", 
-             vjust = 1.5, hjust = 0, color = "orange", fontface = "bold") +
+    # annotate("text", x = min(ts_data$Year), y = 1, label = "Overfished", 
+    #          vjust = 1.5, hjust = 0, color = "darkred", fontface = "bold") +
     labs(
       title = "Estimated Stock Biomass Over Time",
       subtitle = sprintf("Current Status: B/Bmsy = %.2f", B_Bmsy),
-      y = "B / Bmsy (Biomass relative to target)",
-      caption = "Green zone = Healthy | Yellow = Overfished | Red = Critically depleted"
+      y = "Biomass",
+      caption = "Green zone = Healthy | Yellow = Overfished"
     ) +
     theme_minimal() +
     theme(plot.title = element_text(face = "bold"))
@@ -682,13 +682,13 @@ plot_kobe <- function(fit) {
   
   p <- ggplot() +
     # Quadrant shading
-    annotate("rect", xmin = 0, xmax = 1, ymin = 0, ymax = 1, 
-             fill = "red", alpha = 0.3) +
-    annotate("rect", xmin = 1, xmax = Inf, ymin = 0, ymax = 1, 
-             fill = "yellow", alpha = 0.3) +
     annotate("rect", xmin = 0, xmax = 1, ymin = 1, ymax = Inf, 
-             fill = "orange", alpha = 0.3) +
+             fill = "red", alpha = 0.3) +
     annotate("rect", xmin = 1, xmax = Inf, ymin = 1, ymax = Inf, 
+             fill = "yellow", alpha = 0.3) +
+    annotate("rect", xmin = 0, xmax = 1, ymin = 0, ymax = 1, 
+             fill = "orange", alpha = 0.3) +
+    annotate("rect", xmin = 1, xmax = Inf, ymin = 0, ymax = 1, 
              fill = "green", alpha = 0.3) +
     
     # Reference lines
@@ -708,12 +708,12 @@ plot_kobe <- function(fit) {
              label = "Current", vjust = -1.5, fontface = "bold") +
     
     # Labels
-    annotate("text", x = 0.3, y = 1.7, label = "Overfishing", 
-             fontface = "bold", size = 5) +
+    annotate("text", x = 0.3, y = 1.7, label = "Overfished\n& Overfishing", 
+             fontface = "bold", size = 5, color = "darkred") +
     annotate("text", x = 1.5, y = 1.7, label = "Overfishing\n(stock still healthy)", 
              fontface = "bold", size = 4) +
-    annotate("text", x = 0.3, y = 0.3, label = "Overfished\n& Overfishing", 
-             fontface = "bold", size = 5, color = "darkred") +
+    annotate("text", x = 0.4, y = 0.3, label = "Overfished \n(but sustainable fishing)", 
+             fontface = "bold", size = 4) +
     annotate("text", x = 1.5, y = 0.3, label = "Healthy", 
              fontface = "bold", size = 5, color = "darkgreen") +
     

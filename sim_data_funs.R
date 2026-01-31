@@ -295,54 +295,24 @@ generate_multi_group_data <- function(n_groups = 4,
   return(group_data)
 }
 
-#' Plot Historical Data
+#' Plot Catch Data
 #'
 #' @param data Historical data frame from generate_historical_data
-#' @param show_biomass Logical, whether to show true biomass (for teaching)
 #'
 #' @return ggplot object
-plot_historical_data <- function(data, show_biomass = FALSE) {
+plot_catch_data <- function(data) {
   
-  scenario <- attr(data, "scenario")
-  Bmsy <- attr(data, "Bmsy")
-  MSY <- attr(data, "MSY")
-  K <- attr(data, "K")
-  final_status <- attr(data, "final_B_Bmsy")
-  
-  # Create plot with catch and effort
-  p <- ggplot(data, aes(x = Year)) +
-    geom_line(aes(y = Catch, color = "Catch"), linewidth = 1) +
-    geom_point(aes(y = Catch, color = "Catch"), size = 2) +
-    geom_line(aes(y = Effort/5, color = "Effort (scaled)"), linewidth = 1, linetype = "dashed") +
-    scale_y_continuous(
-      name = "Catch",
-      sec.axis = sec_axis(~.*5, name = "Effort")
-    ) +
-    scale_color_manual(values = c("Catch" = "#2E86AB", "Effort (scaled)" = "#A23B72")) +
+  ggplot(data, aes(x = Date, y = Count)) +
+    geom_col(fill = "#2E86AB") +
     labs(
-      title = paste0("Historical Fishery Data (", n_distinct(data$Year), " years)"),
-      subtitle = sprintf("Scenario: %s | Final B/Bmsy = %.2f", scenario, final_status),
-      color = ""
+      title = paste0("Historical Catch Data (", n_distinct(data$Date), " years)"),
+      x = "Date",
+      y = "Count"
     ) +
     theme_minimal() +
     theme(
-      legend.position = "bottom",
       plot.title = element_text(face = "bold")
     )
-  
-  # Optionally add biomass (for instructor view)
-  if (show_biomass) {
-    p <- p +
-      geom_line(aes(y = Biomass, color = "True Biomass"), linewidth = 1, alpha = 0.7) +
-      geom_hline(yintercept = Bmsy, linetype = "dotted", color = "darkgreen", linewidth = 0.8) +
-      geom_hline(yintercept = K, linetype = "dotted", color = "gray50", linewidth = 0.5) +
-      annotate("text", x = min(data$Year), y = Bmsy, label = "Bmsy", 
-               vjust = -0.5, hjust = 0, color = "darkgreen", size = 3) +
-      annotate("text", x = min(data$Year), y = K, label = "K", 
-               vjust = -0.5, hjust = 0, color = "gray50", size = 3)
-  }
-  
-  return(p)
 }
 
 #' Plot CPUE Time Series
@@ -354,15 +324,20 @@ plot_cpue <- function(data) {
   
   scenario <- attr(data, "scenario")
   final_status <- attr(data, "final_B_Bmsy")
+
+  if(!"CPUE" %in% colnames(data)){
+    data$CPUE <- data$Count/data$Effort
+  }
   
-  ggplot(data, aes(x = Year, y = CPUE)) +
-    geom_line(color = "#E63946", linewidth = 1) +
-    geom_point(color = "#E63946", size = 3) +
-    geom_smooth(method = "loess", se = TRUE, color = "#457B9D", fill = "#A8DADC") +
+  ggplot(data, aes(x = as.numeric(Date), y = CPUE)) +
+    geom_line(color = "#457B9D", linewidth = 1) +
+    geom_point(fill = "#A8DADC", color = "#457B9D", shape = 21, size = 3) +
+    #geom_smooth(method = "loess", se = TRUE, color = "#457B9D", fill = "#A8DADC") +
     labs(
       title = "Catch Per Unit Effort (CPUE) Over Time",
       subtitle = sprintf("Scenario: %s | Final B/Bmsy = %.2f", scenario, final_status),
-      y = "CPUE (Catch / Effort)"
+      y = "CPUE (Catch / Effort)",
+      x = "Year"
     ) +
     theme_minimal() +
     theme(plot.title = element_text(face = "bold"))
@@ -383,7 +358,7 @@ plot_biomass_status <- function(data) {
   # Create status zones
   status_color <- ifelse(data$Biomass > Bmsy, "Healthy", "Overfished")
   
-  ggplot(data, aes(x = Year, y = Biomass / Bmsy)) +
+  ggplot(data, aes(x = Date, y = Biomass / Bmsy)) +
     geom_hline(yintercept = 1.0, linetype = "solid", color = "darkgreen", linewidth = 1) +
     geom_hline(yintercept = 0.5, linetype = "dashed", color = "orange", linewidth = 0.8) +
     geom_ribbon(aes(ymin = 0, ymax = pmin(Biomass/Bmsy, 0.5)), fill = "red", alpha = 0.2) +
@@ -391,9 +366,9 @@ plot_biomass_status <- function(data) {
     geom_ribbon(aes(ymin = 1.0, ymax = Biomass/Bmsy), fill = "green", alpha = 0.2) +
     geom_line(linewidth = 1.2, color = "#1d3557") +
     geom_point(size = 3, color = "#1d3557") +
-    annotate("text", x = min(data$Year), y = 1.0, label = "Bmsy", 
+    annotate("text", x = min(data$Date), y = 1.0, label = "Bmsy", 
              vjust = -0.5, hjust = 0, color = "darkgreen", fontface = "bold") +
-    annotate("text", x = min(data$Year), y = 0.5, label = "Critical", 
+    annotate("text", x = min(data$Date), y = 0.5, label = "Critical", 
              vjust = 1.5, hjust = 0, color = "orange", fontface = "bold") +
     labs(
       title = "Stock Status Over Time (B/Bmsy)",
@@ -418,7 +393,7 @@ check_data_quality <- function(data) {
   warnings <- character(0)
   
   # Check for missing values
-  if (any(is.na(data$Catch))) {
+  if (any(is.na(data$Count))) {
     issues <- c(issues, "Missing catch values detected")
   }
   if (any(is.na(data$Effort))) {
@@ -426,15 +401,15 @@ check_data_quality <- function(data) {
   }
   
   # Check for zeros
-  if (any(data$Catch == 0)) {
-    warnings <- c(warnings, sprintf("%d years with zero catch", sum(data$Catch == 0)))
+  if (any(data$Count == 0)) {
+    warnings <- c(warnings, sprintf("%d years with zero catch", sum(data$Count == 0)))
   }
   if (any(data$Effort == 0)) {
     issues <- c(issues, "Zero effort values detected (will cause CPUE calculation errors)")
   }
   
   # Check for negative values
-  if (any(data$Catch < 0)) {
+  if (any(data$Count < 0)) {
     issues <- c(issues, "Negative catch values detected")
   }
   if (any(data$Effort < 0)) {
@@ -447,11 +422,11 @@ check_data_quality <- function(data) {
   }
   
   # Check CPUE trend
-  cpue <- data$Catch / data$Effort
+  cpue <- data$Count / data$Effort
   
   # Safely check for trend
   cpue_trend_result <- tryCatch({
-    cpue_lm <- lm(cpue ~ data$Year)
+    cpue_lm <- lm(cpue ~ data$Date)
     cpue_summary <- summary(cpue_lm)
     list(
       coefficient = coef(cpue_lm)[2],
@@ -467,7 +442,7 @@ check_data_quality <- function(data) {
   }
   
   # Check for extreme values
-  catch_cv <- sd(data$Catch) / mean(data$Catch)
+  catch_cv <- sd(data$Count) / mean(data$Count)
   effort_cv <- sd(data$Effort) / mean(data$Effort)
   
   if (catch_cv > 1.0) {
@@ -481,7 +456,7 @@ check_data_quality <- function(data) {
   cat("\n=== DATA QUALITY CHECK ===\n")
   cat(sprintf("Years of data: %d\n", nrow(data)))
   cat(sprintf("Catch range: %.0f - %.0f (mean: %.0f)\n", 
-              min(data$Catch), max(data$Catch), mean(data$Catch)))
+              min(data$Count), max(data$Count), mean(data$Count)))
   cat(sprintf("Effort range: %.0f - %.0f (mean: %.0f)\n", 
               min(data$Effort), max(data$Effort), mean(data$Effort)))
   cat(sprintf("CPUE range: %.4f - %.4f (mean: %.4f)\n", 
@@ -529,7 +504,7 @@ process_workshop_simple <- function(workshop_raw, historical_data) {
   
   n_workshop <- nrow(workshop_raw)
   results <- data.frame(
-    Year = workshop_raw$Year,
+    Year = workshop_raw$Date,
     Raw_Marbles = workshop_raw$Catch,
     Catch = numeric(n_workshop),
     Effort = numeric(n_workshop),
@@ -1088,13 +1063,13 @@ print.bidirectional_scaling <- function(scaling) {
 #' @return Data frame with workshop-scale values
 display_for_workshop <- function(historical_data, 
                                  scaling,
-                                 columns_to_show = c("Date", "Marbles", "Seconds", "CPUE_marbles")) {
+                                 columns_to_show = c("Date", "Count", "Effort", "CPUE")) {
   
   # Convert to marble units
   workshop_view <- historical_data
-  workshop_view$Marbles <- scaling$to_marbles(historical_data$Count)
-  workshop_view$Seconds <- scaling$to_seconds(historical_data$Effort)
-  workshop_view$CPUE_marbles <- round(workshop_view$Marbles / workshop_view$Seconds, 3)
+  workshop_view$Count <- scaling$to_marbles(historical_data$Count)
+  workshop_view$Effort <- scaling$to_seconds(historical_data$Effort)
+  workshop_view$CPUE <- round(workshop_view$Count / workshop_view$Effort, 3)
   
   # Select columns
   result <- workshop_view[, columns_to_show, drop = FALSE]
