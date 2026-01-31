@@ -8,27 +8,27 @@ library(bsicons)
 # https://excalidraw.com/
 
 hist_catch <- read.csv("./historical_data.csv") %>%
-  select(Year, SPECIES, Catch, scenario, Effort, CPUE) %>%
+  select(Year, Species, Catch, scenario, Effort, CPUE) %>%
   # Convert species code names to display names
   mutate(
-    SPECIES = case_when(
-      SPECIES == "yellowfin_tuna" ~ "Yellowfin Tuna",
-      SPECIES == "mahi_mahi" ~ "Mahi Mahi",
-      SPECIES == "Opakapaka" ~ "Opakapaka",
-      SPECIES == "Peacock_grouper" ~ "Peacock Grouper",
-      SPECIES == "Yellowfin_goatfish" ~ "Yellowfin Goatfish",
-      TRUE ~ SPECIES
+    Species = case_when(
+      Species == "yellowfin_tuna" ~ "Yellowfin Tuna",
+      Species == "mahi_mahi" ~ "Mahi Mahi",
+      Species == "Opakapaka" ~ "Opakapaka",
+      Species == "Peacock_grouper" ~ "Peacock Grouper",
+      Species == "Yellowfin_goatfish" ~ "Yellowfin Goatfish",
+      TRUE ~ Species
     ),
     # Rename columns to match your table format
     Date = as.character(Year),
     Count = round(Catch),  # Assuming Catch represents count
     Effort = round(Effort, 1)
   ) %>% 
-  mutate(Sps_scenario = paste(SPECIES, scenario, sep = "_"))
+  mutate(Sps_scenario = paste(Species, scenario, sep = "_"))
   
 hist_catch_shiny <- hist_catch %>%
   filter(scenario == "healthy") %>% # adjust based on what scenario you want to use per species
-  select(SPECIES, Date, Count, Effort) 
+  select(Species, Date, Count, Effort) 
   #rename(`Effort (sec)` = Effort)
 
 
