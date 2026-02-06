@@ -5,12 +5,14 @@ library(magrittr)
 library(bslib)
 library(bsicons)
 library(shinyjs)
+library(markdown)
 # https://excalidraw.com/
 
 source("../sim_data_funs.R") 
 source("../fit_spm_funs.R")
 
-hist_catch <- read.csv("./historical_data.csv") %>%
+scens <- c("healthy", "overfished", "recovering")
+hist_catch <- read.csv("./R/historical_data.csv") %>%
   select(Year, Species, Catch, Scenario, Effort, CPUE) %>%
   # Convert species code names to display names
   mutate(
@@ -24,9 +26,10 @@ hist_catch <- read.csv("./historical_data.csv") %>%
     ),
     # Rename columns to match your table format
     Date = as.character(Year),
-    Count = round(Catch),  # Assuming Catch represents count
+    Count = ceiling(Catch),  # Assuming Catch represents count
     Effort = round(Effort, 1)
   ) %>% 
+  filter(Scenario %in% scens) %>%
   mutate(Sps_scenario = paste(Species, Scenario, sep = "_"))
   
 hist_catch_shiny <- hist_catch %>%
@@ -55,7 +58,8 @@ scaling_by_species <- hist_catch_shiny %>%
   ungroup() %>%
   select(formatted_table) %>%
   tidyr::unnest(cols = c(formatted_table)) %>%
-  select(Species, Scenario, Date, Count, Effort)
+  select(Species, Scenario, Date, Count, Effort) %>%
+  mutate(Count = round(Count))
 
 
 ui <- page_sidebar(
@@ -111,6 +115,8 @@ server <- function(input, output, session) {
   current_page <- reactiveVal("welcome")
   fish_data <- reactiveVal(scaling_by_species)
   model_results <- reactiveVal(NULL)
+  # A place to store saved plots and results
+  saved_results <- reactiveVal(list())
 
   # Function to update active class
   update_nav <- function(active_page) {
@@ -150,8 +156,7 @@ server <- function(input, output, session) {
     switch(current_page(),
       
       "welcome" = div(
-        h2("Welcome to MREP Shiny App"),
-        p("This application allows you to manage catch and effort data for marine species.")
+        shiny::includeMarkdown("./welcome.md")
       ),
       
       "data_entry" = div(
@@ -213,6 +218,10 @@ server <- function(input, output, session) {
       "summary" = div(
         h2("Summary"),
         p("Let's wrap up what we learned and compare some of our results!"),
+        # Show saved plots
+        uiOutput("saved_plots_ui"),
+        
+        hr(),
         p(strong("What were your fishing motivations?")),
         p(strong("Based on what you know about the life history strategy of your species, 
         how do you think your fishing strategy impacted the population?"))
@@ -288,6 +297,87 @@ server <- function(input, output, session) {
     
     plot_cpue(data)
   })
+
+  # Display saved plots
+  output$saved_plots_ui <- renderUI({
+    saved <- saved_results()
+    
+    if (length(saved) == 0) {
+      return(
+        div(
+          style = "padding: 20px; text-align: center; color: #666;",
+          icon("chart-bar", style = "font-size: 48px;"),
+          h4("No saved plots yet"),
+          p("Run models and click 'Send to Summary' to save plots here.")
+        )
+      )
+    }
+    
+    # Create a card for each saved plot
+    plot_cards <- lapply(names(saved), function(result_id) {
+      result <- saved[[result_id]]
+      
+      # Create unique output ID
+      plot_output_id <- paste0("saved_plot_", gsub("[^[:alnum:]]", "_", result_id))
+      
+      card(
+        card_header(
+          class = "d-flex justify-content-between align-items-center",
+          div(
+            strong(result$title),
+            br(),
+            span(style = "font-size: 0.9em; color: #666;",
+                format(result$timestamp, "%Y-%m-%d %H:%M:%S"))
+          ),
+          actionButton(
+            inputId = paste0("delete_", result_id),
+            label = icon("trash"),
+            class = "btn-danger btn-sm",
+            onclick = sprintf("Shiny.setInputValue('delete_plot', '%s', {priority: 'event'})", result_id)
+          )
+        ),
+        card_body(
+          plotOutput(plot_output_id, height = "500px")
+        )
+      )
+    })
+    
+    # Arrange in a grid
+    layout_column_wrap(
+      width = 1/2,  # Two columns
+      !!!plot_cards
+    )
+  })
+
+  # Render each saved plot
+  observe({
+    saved <- saved_results()
+    
+    lapply(names(saved), function(result_id) {
+      result <- saved[[result_id]]
+      plot_output_id <- paste0("saved_plot_", gsub("[^[:alnum:]]", "_", result_id))
+      
+      output[[plot_output_id]] <- renderPlot({
+        if (result$plot_type == "kobe") {
+          plot_kobe(result$model_fit)
+        } else if (result$plot_type == "biomass") {
+          plot_biomass_trajectory(result$model_fit)
+        }
+      })
+    })
+  })
+
+  # Delete saved plot
+  observeEvent(input$delete_plot, {
+    result_id <- input$delete_plot
+    
+    current_saved <- saved_results()
+    current_saved[[result_id]] <- NULL
+    saved_results(current_saved)
+    
+    showNotification("Plot removed from Summary", type = "message", duration = 2)
+  })
+
    # Run model when button is clicked
   observeEvent(input$run_model_btn, {
     
@@ -366,13 +456,31 @@ server <- function(input, output, session) {
         h4("Model Parameters & Stock Status"),
         verbatimTextOutput("model_summary"),
         
-        hr(),
-        h4("Stock Status Plot"),
-        plotOutput("kobe_plot", height = "600px"),
+      hr(),
+      fluidRow(
+        column(10,
+          h4("Kobe Plot - Stock Status")
+        ),
+        column(2,
+          actionButton("save_kobe", "Send to Summary", 
+                      class = "btn-success btn-sm",
+                      style = "margin-top: 10px;")
+        )
+      ),
+      plotOutput("kobe_plot", height = "600px"),
         
-        hr(),
-        h4("Biomass Timeseries Plot"),
-        plotOutput("biomass_plot", height = "600px")
+      hr(),
+      fluidRow(
+        column(10,
+          h4("Biomass Trajectory")
+        ),
+        column(2,
+          actionButton("save_biomass", "Send to Summary", 
+                      class = "btn-success btn-sm",
+                      style = "margin-top: 10px;")
+        )
+      ),
+      plotOutput("biomass_plot", height = "600px")
       )
     )
   })
@@ -574,6 +682,64 @@ server <- function(input, output, session) {
     
     showNotification("Row deleted successfully!", type = "message")
     removeModal()
+  })
+
+  # Save Kobe plot to summary
+observeEvent(input$save_kobe, {
+  results <- model_results()
+  req(results)
+  
+  # Create a unique ID for this result
+  result_id <- paste0(results$species, "_", results$scenario, "_kobe_", 
+                      format(Sys.time(), "%Y%m%d_%H%M%S"))
+  
+  # Store the plot information
+  new_result <- list(
+    id = result_id,
+    species = results$species,
+    scenario = results$scenario,
+    plot_type = "kobe",
+    model_fit = results$model_fit,
+    timestamp = Sys.time(),
+    title = paste("Kobe Plot:", results$species, "-", results$scenario)
+  )
+  
+  # Add to saved results
+  current_saved <- saved_results()
+  current_saved[[result_id]] <- new_result
+  saved_results(current_saved)
+  
+  showNotification("Kobe plot saved to Summary page!", 
+                  type = "message", duration = 3)
+})
+
+  # Save Biomass plot to summary
+  observeEvent(input$save_biomass, {
+    results <- model_results()
+    req(results)
+    
+    # Create a unique ID for this result
+    result_id <- paste0(results$species, "_", results$scenario, "_biomass_", 
+                        format(Sys.time(), "%Y%m%d_%H%M%S"))
+    
+    # Store the plot information
+    new_result <- list(
+      id = result_id,
+      species = results$species,
+      scenario = results$scenario,
+      plot_type = "biomass",
+      model_fit = results$model_fit,
+      timestamp = Sys.time(),
+      title = paste("Biomass Trajectory:", results$species, "-", results$scenario)
+    )
+    
+    # Add to saved results
+    current_saved <- saved_results()
+    current_saved[[result_id]] <- new_result
+    saved_results(current_saved)
+    
+    showNotification("Biomass plot saved to Summary page!", 
+                    type = "message", duration = 3)
   })
 
 }

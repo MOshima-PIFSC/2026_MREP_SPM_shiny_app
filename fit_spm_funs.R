@@ -560,7 +560,7 @@ print.schaefer_fit <- function(fit) {
   cat(sprintf("  RMSE: %.4f\n\n", fit$diagnostics$rmse))
   
   cat("ESTIMATED PARAMETERS:\n")
-  cat(sprintf("  r (growth rate): %.4f\n", fit$parameters$r))
+  cat(sprintf("  r (population growth rate): %.4f\n", fit$parameters$r))
   cat(sprintf("  K (carrying capacity): %.0f\n", fit$parameters$K))
   cat(sprintf("  q (catchability): %.6f\n\n", fit$parameters$q))
   
@@ -571,10 +571,10 @@ print.schaefer_fit <- function(fit) {
   
   cat("CURRENT STOCK STATUS:\n")
   cat(sprintf("  Current Biomass: %.0f\n", fit$current_status$B_current))
-  cat(sprintf("  Current F: %.4f\n", fit$current_status$F_current))
-  cat(sprintf("  B/Bmsy: %.2f %s\n", fit$current_status$B_Bmsy,
+  cat(sprintf("  Current Fishing Mortality: %.4f\n", fit$current_status$F_current))
+  cat(sprintf("  Biomass/Bmsy: %.2f %s\n", fit$current_status$B_Bmsy,
               ifelse(fit$current_status$B_Bmsy > 1, clisymbols::symbol$tick, clisymbols::symbol$cross)))
-  cat(sprintf("  F/Fmsy: %.2f %s\n", fit$current_status$F_Fmsy,
+  cat(sprintf("  Fishing mortality/Fmsy: %.2f %s\n", fit$current_status$F_Fmsy,
               ifelse(fit$current_status$F_Fmsy < 1, clisymbols::symbol$tick, clisymbols::symbol$cross)))
   cat(sprintf("  Status: %s\n\n", fit$current_status$status))
   
@@ -655,7 +655,6 @@ plot_biomass_trajectory <- function(fit) {
     #          vjust = 1.5, hjust = 0, color = "darkred", fontface = "bold") +
     labs(
       title = "Estimated Stock Biomass Over Time",
-      subtitle = sprintf("Current Status: B/Bmsy = %.2f", B_Bmsy),
       y = "Biomass",
       caption = "Green zone = Healthy | Yellow = Overfished"
     ) +
