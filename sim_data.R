@@ -12,8 +12,8 @@ library(tidyr)
 
 ##-------------------- sourcing functions ---------------------#
 
-source("./sim_data_funs.R") 
-source("./fit_spm_funs.R")
+source("./R/sim_data_funs.R") 
+source("./R/fit_spm_funs.R")
 sps_lh <- read.csv("./R/species_LH_params.csv")
 
 ##-------------------- Generate historical + workshop data ---------------------#
@@ -23,6 +23,7 @@ historical <- generate_historical_data(
   scenario = "overfished",  # stock will end in overfished status
   K = 300000,
   r = 0.18,
+  q = 2.5e-05,
   start_year = 2012,
   seed = 42
 )
@@ -37,12 +38,13 @@ run_grid <- expand_grid(
   left_join(sps_lh, by = "Species")
 
 results <- run_grid %>%
-  mutate(historical_data = pmap(list(scenario, K, r), function(scen, k_val, r_val) {
+  mutate(historical_data = pmap(list(scenario, K, r, q), function(scen, k_val, r_val, q_val) {
     generate_historical_data(
       n_years = 12,
       scenario = scen,
       K = k_val,
       r = r_val,
+      q = q_val,
       start_year = 2012,
       seed = 42
     )
@@ -52,12 +54,12 @@ tuna_healthy <- results %>%
   filter(Species == "Yellowfin_tuna" & scenario == "healthy") %>%
   pull(historical_data)
 
-final_flat_data <- results %>% unnest(historical_data)
-write.csv(final_flat_data, "./R/historical_data.csv")
+final_flat_data <- results %>% unnest(historical_data) %>% rename("Scenario" = scenario)
+write.csv(final_flat_data, "./R/historical_data.csv", row.names = FALSE)
 
 final_flat_data %>%
 ggplot(aes(x = Year, y = Biomass)) +
-geom_line(aes(group = scenario, color = scenario)) +
+geom_line(aes(group = Scenario, color = Scenario)) +
 facet_wrap(~Species, scales = "free_y") + 
 theme_bw()
 
@@ -70,11 +72,11 @@ print(guidance)
 
 # Create guidance with all necessary info preserved
 guidance_all <- final_flat_data %>%
-  group_by(Species, scenario, K, r, q) %>%
+  group_by(Species, Scenario, K, r, q) %>%
   nest() %>%
   mutate(
     # Add attributes that the function expects
-    guidance = pmap(list(data, scenario, K, r, q), function(df, scen, K_val, r_val, q_val) {
+    guidance = pmap(list(data, Scenario, K, r, q), function(df, scen, K_val, r_val, q_val) {
       
       Bmsy <- K_val / 2
       MSY <- r_val * K_val / 4
@@ -95,7 +97,7 @@ guidance_all <- final_flat_data %>%
 
 # View guidance for a specific case
 guidance_all %>%
-  filter(Species == "Yellowfin_tuna", scenario == "healthy") %>%
+  filter(Species == "Yellowfin_tuna", Scenario == "healthy") %>%
   pull(guidance) %>%
   .[[1]] %>%
   print()
@@ -110,12 +112,12 @@ guidance_summary <- guidance_all %>%
     marble_range_max = map_dbl(guidance, ~ .x$marble_range[2]),
     recommended_marbles = map_dbl(guidance, ~ .x$recommended_marbles_mean)
   ) %>%
-  select(Species, scenario, stock_status, final_B_Bmsy, 
+  select(Species, Scenario, stock_status, final_B_Bmsy, 
          sustainable_catch, marble_range_min, marble_range_max, 
          recommended_marbles)
 
 print(guidance_summary, n = 25)
-write.csv(guidance_summary, file = "./setup_guidance.csv")
+write.csv(guidance_summary, file = "./setup_guidance.csv", row.names = FALSE)
 
 ##-------------------- Combine historical and workshop data ---------------------#
 # Add 3 additional workshop years
