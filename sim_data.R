@@ -35,10 +35,14 @@ run_grid <- expand_grid(
   Species = species_vec, 
   scenario = scenarios_vec
 ) %>%
-  left_join(sps_lh, by = "Species")
+  left_join(sps_lh, by = "Species") %>%
+  mutate(
+    catch_cv = ifelse(scenario == "recovering", 0.05, 0.15),
+    effort_cv = ifelse(scenario == "recovering", 0.10, 0.20)
+  )
 
 results <- run_grid %>%
-  mutate(historical_data = pmap(list(scenario, K, r, q), function(scen, k_val, r_val, q_val) {
+  mutate(historical_data = pmap(list(scenario, K, r, q, catch_cv, effort_cv), function(scen, k_val, r_val, q_val, c_cv, e_cv) {
     generate_historical_data(
       n_years = 12,
       scenario = scen,
@@ -46,6 +50,8 @@ results <- run_grid %>%
       r = r_val,
       q = q_val,
       start_year = 2012,
+      catch_cv = c_cv,
+      effort_cv = e_cv,
       seed = 42
     )
   }))
@@ -136,6 +142,40 @@ combined_data <- rbind(
 
 ##-------------------- Reverse scale historical to workshop data for shiny app ----------------------#
 
+# Prepare data for shiny app
+hist_catch_shiny <- final_flat_data %>%
+  mutate(
+    Date = as.character(Year),
+    Count = ceiling(Catch),
+    Effort = round(Effort, 1)
+  ) %>% 
+  select(Species, Scenario, Date, Count, Effort)
+
+# Create the scaling objects
+scaling_by_species <- hist_catch_shiny %>%
+  group_by(Species, Scenario) %>%
+  tidyr::nest() %>%
+  mutate(
+    # Step A: Generate unique scaling for each species
+    scaling_logic = purrr::map(data, ~create_bidirectional_scaling(.x)),
+    
+    # Step B: Apply scaling logic to the nested data
+    formatted_table = purrr::map2(data, scaling_logic, 
+      ~display_for_workshop(.x, .y))
+  ) %>%
+  # Step C: Add both Species and Scenario back into formatted_table
+  mutate(formatted_table = purrr::pmap(list(formatted_table, Species, Scenario), 
+    function(table, species, scenario) {
+      table$Species <- species
+      table$Scenario <- scenario
+      return(table)
+  })) %>%
+  ungroup() %>%
+  select(formatted_table) %>%
+  tidyr::unnest(cols = c(formatted_table)) %>%
+  select(Species, Scenario, Date, Count, Effort) %>%
+  mutate(Count = round(Count))
+
 # 1. Create the bidirectional scaling object
 hist_catch_shiny_yt <- hist_catch_shiny %>% filter(Species == "Yellowfin_tuna")
 
@@ -148,7 +188,7 @@ workshop_display <- display_for_workshop(hist_catch_shiny_yt, scaling, columns_t
 print(workshop_display)
 
 combined_data <- workshop_display %>% select(-CPUE_marbles) %>% rename("Year" = Date, "Catch" = Marbles, "Effort" = Seconds)
-scaling_by_species_yt <- scaling_by_species %>% filter(Species == "Yellowfin_tuna" & Scenario == "healthy")
+scaling_by_species_yt <- scaling_by_species %>% filter(Species == "Yellowfin_tuna" & Scenario == "recovering")
 ##-------------------- Fit model ---------------------#
 model_fit <- fit_schaefer_model(
   data = scaling_by_species_yt,

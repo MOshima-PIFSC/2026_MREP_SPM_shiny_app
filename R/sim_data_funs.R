@@ -194,6 +194,28 @@ generate_biomass_trajectory <- function(n_years, B_initial, B_final, K, r,
     
     B <- base_trend + fluctuation
     
+  } else if (trajectory_type == "recovery_contrast") {
+    # V-shaped trajectory for contrast
+    pivot_year <- max(2, floor(n_years / 3))
+    B_low <- B_initial * 0.5
+    
+    # Segment 1: Decline
+    steepness_down <- 1 + (r / 0.3) * 2
+    steepness_down <- max(1.5, min(steepness_down, 6))
+    x_down <- seq(-steepness_down, steepness_down, length.out = pivot_year)
+    sigmoid_down <- 1 / (1 + exp(-x_down))
+    B_down <- B_initial + (B_low - B_initial) * sigmoid_down
+    
+    # Segment 2: Recovery
+    n_up <- n_years - pivot_year
+    steepness_up <- 1 + (r / 0.3) * 2
+    steepness_up <- max(1.5, min(steepness_up, 6))
+    x_up <- seq(-steepness_up, steepness_up, length.out = n_up + 1)
+    sigmoid_up <- 1 / (1 + exp(-x_up))
+    B_up <- B_low + (B_final - B_low) * sigmoid_up
+    
+    B <- c(B_down, B_up[-1])
+    
   } else {
     # Default to smooth
     x <- seq(-3, 3, length.out = n_years)
@@ -234,9 +256,9 @@ get_scenario_params <- function(scenario, K, Bmsy) {
       description = "Stock declining due to overfishing"
     ),
     "recovering" = list(
-      B_initial = Bmsy * 0.30,     # Start overfished
-      B_final = Bmsy * 0.95,       # End near Bmsy (recovering!)
-      trajectory_type = "smooth",
+      B_initial = Bmsy * 0.60,     # Start partially overfished
+      B_final = Bmsy * 1.2,        # End fully recovered
+      trajectory_type = "recovery_contrast",
       base_effort = 2000,
       description = "Stock recovering from overfished state"
     ),
