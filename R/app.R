@@ -63,7 +63,7 @@ scaling_by_species <- hist_catch_shiny %>%
 
 
 ui <- page_sidebar(
-  title = "MREP Shiny App",
+  title = "WP-MREP Stock Assessment Simulation Tool",
   theme = bs_theme(bootswatch = "lumen", "navbar-bg" = "#158CBA"),
   
   useShinyjs(),  # Initialize shinyjs
